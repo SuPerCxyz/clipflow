@@ -1,21 +1,29 @@
 #!/usr/bin/env python3
 """从源 Logo 图生成扩展全尺寸图标（16/32/48/128）。
 
-默认源路径 ~/tmp/2.png，可用环境变量 CLIPFLOW_LOGO 覆盖：
-    CLIPFLOW_LOGO=/path/to/logo.png python3 scripts/gen-icons.py
+源图优先级：环境变量 CLIPFLOW_LOGO > 仓库内 assets/logo.png > ~/tmp/2.png
 依赖：python3 + Pillow
 """
 import os
 
 from PIL import Image
 
-SRC = os.environ.get("CLIPFLOW_LOGO") or os.path.expanduser("~/tmp/2.png")
+CANDIDATES = [
+    os.environ.get("CLIPFLOW_LOGO"),
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "assets", "logo.png"
+    ),
+    os.path.expanduser("~/tmp/2.png"),
+]
+SRC = next((p for p in CANDIDATES if p and os.path.exists(p)), None)
 OUT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "public", "icons"
 )
 
-if not os.path.exists(SRC):
-    raise SystemExit(f"Logo 源文件不存在: {SRC}（可用 CLIPFLOW_LOGO 指定）")
+if not SRC:
+    raise SystemExit(
+        "未找到 Logo 源文件（尝试: $CLIPFLOW_LOGO / assets/logo.png / ~/tmp/2.png）"
+    )
 
 os.makedirs(OUT, exist_ok=True)
 img = Image.open(SRC).convert("RGBA")
