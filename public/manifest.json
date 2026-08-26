@@ -1,0 +1,53 @@
+{
+  "manifest_version": 3,
+  "name": "ClipFlow",
+  "version": "0.4.3",
+  "description": "跨网页复制内容收集器：自动记录复制文本，支持 URL+正则规则自动采集，随时搜索、整理并一键合并导出。",
+  "minimum_chrome_version": "116",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "打开 ClipFlow",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content-main.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    }
+  ],
+  "side_panel": {
+    "default_path": "index.html"
+  },
+  "permissions": ["sidePanel", "favicon", "clipboardWrite"],
+  "commands": {
+    "open-panel": {
+      "suggested_key": { "default": "Alt+Shift+F" },
+      "description": "打开 ClipFlow 侧边栏"
+    },
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+C" },
+      "description": "打开 / 聚焦 ClipFlow"
+    }
+  }
+}
