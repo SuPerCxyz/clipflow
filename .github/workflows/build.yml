@@ -1,0 +1,80 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # 仅打 tag 时创建 Release 使用
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install pillow
+          npm ci
+
+      - name: Quality gates
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(jq -r .version dist/manifest.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Pack CRX
+        id: crx
+        env:
+          CRX_PEM: ${{ secrets.CRX_PEM }}
+        run: |
+          VERSION="${{ steps.ver.outputs.version }}"
+          NAME="clipflow-v${VERSION}"
+          if [ -n "$CRX_PEM" ]; then
+            printf '%s\n' "$CRX_PEM" > /tmp/clipflow.pem
+            google-chrome-stable --pack-extension="$PWD/dist" --pack-extension-key=/tmp/clipflow.pem
+            mv dist.crx "${NAME}.crx"
+            rm -f dist.pem
+            echo "packed=true" >> "$GITHUB_OUTPUT"
+            echo "✓ ${NAME}.crx"
+          else
+            echo "::warning::未配置 secret CRX_PEM，跳过 CRX 打包（扩展 ID 会不稳定），仅产出 zip"
+            echo "packed=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipflow-v${{ steps.ver.outputs.version }}
+          path: |
+            clipflow-v*.crx
+            clipflow-v*.zip
+          if-no-files-found: error
+
+      - name: Release (tag push only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            clipflow-v*.zip
+            clipflow-v*.crx
+          generate_release_notes: true
