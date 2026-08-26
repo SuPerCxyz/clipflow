@@ -7,7 +7,7 @@
 import os
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image
 
 CANDIDATES = [
     os.environ.get("CLIPFLOW_LOGO"),
@@ -17,6 +17,9 @@ CANDIDATES = [
     os.path.expanduser("~/tmp/2.png"),
 ]
 SRC = next((p for p in CANDIDATES if p and os.path.exists(p)), None)
+
+WHITE_HARD = 246  # ≥ 此白度直接透明
+WHITE_SOFT = 232  # 渐变半透明下限
 OUT = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "public", "icons"
 )
@@ -28,42 +31,30 @@ if not SRC:
 
 
 def load_source(path: str) -> Image.Image:
-    """读取源图；若为不透明白底图，则抠除与边缘连通的白色背景。"""
+    """
+    读取源图并统一做「全局白色键控」：
+    - min(R,G,B) >= WHITE_HARD → 全透明
+    - WHITE_SOFT <= min(R,G,B) < WHITE_HARD → 线性渐变半透明（抗锯齿边缘）
+    已带真实透明通道的区域不受影响。
+    """
     img = Image.open(path).convert("RGBA")
     arr = np.array(img)
 
-    if (arr[..., 3] < 255).any():
-        return img  # 已带真实透明通道，直接使用
-
-    # 与四角/四边连通的近白像素 → 置透明（Pillow floodfill 以种子色为基准）
-    ff = img.copy()
-    w, h = ff.size
-    for seed in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]:
-        try:
-            ImageDraw.floodfill(ff, seed, (0, 0, 0, 0), thresh=48)
-        except Exception:
-            pass
-
-    arr = np.array(ff)
-    transparent = arr[..., 3] == 0
-    if not transparent.any():
-        print("⚠ 未检测到可抠除的白底（可能非白色背景），按原图继续")
-
-    # 抗锯齿光晕软化：紧邻透明区的近白像素给渐变透明
-    t4 = transparent
-    for shift in (
-        (lambda a: np.roll(a, 1, 0)),
-        (lambda a: np.roll(a, -1, 0)),
-        (lambda a: np.roll(a, 1, 1)),
-        (lambda a: np.roll(a, -1, 1)),
-    ):
-        t4 = t4 | shift(transparent)
     rgb_min = arr[..., :3].min(axis=2)
-    halo = t4 & ~transparent & (rgb_min >= 205)
-    whiteness = np.clip((rgb_min[halo] - 205) / 47.0, 0, 1)
-    new_alpha = (255 * (1 - whiteness)).astype(np.uint8)
-    arr[..., 3][halo] = np.minimum(arr[..., 3][halo], new_alpha)
 
+    hard = rgb_min >= WHITE_HARD
+    soft = (rgb_min >= WHITE_SOFT) & ~hard
+
+    arr[..., 3][hard] = 0
+    ramp = np.clip(
+        (255 * (rgb_min[soft] - WHITE_SOFT) / (WHITE_HARD - WHITE_SOFT)),
+        0,
+        255,
+    ).astype(np.uint8)
+    arr[..., 3][soft] = np.minimum(arr[..., 3][soft], ramp)
+
+    removed = hard.mean() * 100
+    print(f"✓ 白色键控: 全透明 {removed:.1f}% | 渐变 {soft.mean()*100:.1f}%")
     return Image.fromarray(arr)
 
 
