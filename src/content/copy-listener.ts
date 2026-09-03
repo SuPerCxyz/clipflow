@@ -24,7 +24,6 @@ function selectedText(event: ClipboardEvent): string {
     | null
   if (
     active &&
-    !active.readOnly &&
     ((active instanceof HTMLInputElement && active.type !== 'password') ||
       active instanceof HTMLTextAreaElement)
   ) {

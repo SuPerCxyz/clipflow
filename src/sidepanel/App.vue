@@ -39,6 +39,13 @@ onMounted(() => {
 })
 onUnmounted(() => {
   window.matchMedia('(prefers-color-scheme: dark)')?.removeEventListener('change', onSchemeChange)
+  window.removeEventListener('resize', schedulePopupClamp)
+  popupObserver?.disconnect()
+  popupObserver = null
+  if (popupClampFrame != null) cancelAnimationFrame(popupClampFrame)
+  popupClampFrame = null
+  if (popupClampTimer != null) clearTimeout(popupClampTimer)
+  popupClampTimer = null
 })
 
 const theme = computed<GlobalTheme | null>(() => (prefersDark.value ? darkTheme : null))
@@ -87,9 +94,44 @@ const themeOverrides = computed(() =>
   prefersDark.value ? DARK_OVERRIDES : LIGHT_OVERRIDES,
 )
 
+let popupClampFrame: number | null = null
+let popupClampTimer: ReturnType<typeof setTimeout> | null = null
+let popupObserver: MutationObserver | null = null
+
+function clampPopupsToViewport(): void {
+  popupClampFrame = null
+  const gutter = 12
+  const rightEdge = window.innerWidth - gutter
+
+  for (const popup of document.querySelectorAll<HTMLElement>(
+    '.v-binder-follower-content > .n-popover',
+  )) {
+    popup.style.marginLeft = ''
+    const rect = popup.getBoundingClientRect()
+    let shift = 0
+    if (rect.right > rightEdge) shift = rightEdge - rect.right
+    if (rect.left + shift < gutter) shift += gutter - (rect.left + shift)
+    if (shift) popup.style.marginLeft = `${shift}px`
+  }
+}
+
+function schedulePopupClamp(): void {
+  if (popupClampFrame == null) {
+    popupClampFrame = requestAnimationFrame(clampPopupsToViewport)
+  }
+  if (popupClampTimer != null) clearTimeout(popupClampTimer)
+  popupClampTimer = setTimeout(() => {
+    popupClampTimer = null
+    clampPopupsToViewport()
+  }, 220)
+}
+
 onMounted(() => {
   void clips.init()
   void ws.loadAll()
+  popupObserver = new MutationObserver(schedulePopupClamp)
+  popupObserver.observe(document.body, { childList: true })
+  window.addEventListener('resize', schedulePopupClamp)
 })
 
 function onSearchInput(): void {

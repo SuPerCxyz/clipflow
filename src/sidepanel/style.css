@@ -135,6 +135,51 @@ mark {
   display: flex;
 }
 
+/* ---------- 弹窗 / 确认浮层：始终留在视口安全区内 ---------- */
+:where(.n-modal, .n-dialog) {
+  min-width: 0;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+}
+
+.n-modal .n-card-content,
+.n-modal .n-card__footer,
+.n-dialog .n-dialog__content,
+.n-dialog .n-dialog__action {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.n-modal .n-card-content,
+.n-dialog .n-dialog__content {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+:where(.n-popover) {
+  min-width: 0;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-wrap: anywhere;
+}
+
+.n-popover__content {
+  min-width: 0;
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+
+.n-popconfirm__panel,
+.n-popconfirm__body,
+.n-popconfirm__action {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .page {
   flex: 1 1 auto;
   min-width: 0;

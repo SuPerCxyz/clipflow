@@ -13,6 +13,15 @@ export function watchDomMutations(onActivity: () => void): () => void {
     childList: true,
     subtree: true,
     characterData: true,
+    attributes: true,
+    attributeFilter: [
+      'data-magnet',
+      'data-clipboard-text',
+      'data-copy-text',
+      'data-copy-content',
+      'data-copy-value',
+      'value',
+    ],
   })
   return () => observer.disconnect()
 }
