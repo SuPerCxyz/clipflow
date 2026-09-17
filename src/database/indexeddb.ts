@@ -220,6 +220,38 @@ export async function listClips(
   return out
 }
 
+/** 按过滤条件一次性读取全部匹配记录（时间倒序），供「复制全部 / 详情」等全量语义使用 */
+export async function listAllClips(filter: ClipListFilter = {}): Promise<ClipItem[]> {
+  const tx = (await getDb()).transaction('clips')
+  const { indexName, prefix } = resolveFilterIndex(filter)
+  const index = tx.objectStore('clips').index(indexName)
+  const range = prefix ? IDBKeyRange.bound([prefix], [prefix, []]) : undefined
+
+  const out: ClipItem[] = []
+  let cursor = await index.openCursor(range, 'prev')
+  while (cursor) {
+    out.push(cursor.value)
+    cursor = await cursor.continue()
+  }
+  return out
+}
+
+/** 按过滤条件读取全部匹配记录的 id（时间倒序），供选择模式「全选」使用 */
+export async function listAllClipIds(filter: ClipListFilter = {}): Promise<string[]> {
+  const tx = (await getDb()).transaction('clips')
+  const { indexName, prefix } = resolveFilterIndex(filter)
+  const index = tx.objectStore('clips').index(indexName)
+  const range = prefix ? IDBKeyRange.bound([prefix], [prefix, []]) : undefined
+
+  const ids: string[] = []
+  let cursor = await index.openKeyCursor(range, 'prev')
+  while (cursor) {
+    ids.push(String(cursor.primaryKey))
+    cursor = await cursor.continue()
+  }
+  return ids
+}
+
 /**
  * 全文搜索：倒序游标流式扫描，避免一次性载入全部记录；
  * 收集到 limit*2 条候选即提前终止，兼顾相关性与扫描成本。
@@ -317,8 +349,12 @@ export async function deleteAllClips(
   return ids
 }
 
-export async function countClips(): Promise<number> {
-  return (await getDb()).count('clips')
+export async function countClips(filter: ClipListFilter = {}): Promise<number> {
+  const tx = (await getDb()).transaction('clips')
+  const { indexName, prefix } = resolveFilterIndex(filter)
+  if (!prefix) return tx.objectStore('clips').count()
+  const range = IDBKeyRange.bound([prefix], [prefix, []])
+  return tx.objectStore('clips').index(indexName).count(range)
 }
 
 // ============================== Collections ==============================

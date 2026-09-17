@@ -17,6 +17,8 @@ export const useClipsStore = defineStore('clips', () => {
   const loading = ref(false)
   const exhausted = ref(false)
   const totalCount = ref(0)
+  /** 当前筛选（通道/规则/搜索）下的匹配总数，用于「全选」范围与复制计数 */
+  const filteredCount = ref(0)
 
   /** 列表过滤：全部 / 手动复制 / 自动采集（可再按规则过滤） */
   const captureMode = ref<'all' | CaptureType>('all')
@@ -43,6 +45,7 @@ export const useClipsStore = defineStore('clips', () => {
     const page = await db.listClips({ limit: PAGE_SIZE, ...listOpts() })
     items.value = page
     exhausted.value = page.length < PAGE_SIZE
+    filteredCount.value = await db.countClips(listOpts())
   }
 
   async function loadMore(): Promise<void> {
@@ -76,6 +79,7 @@ export const useClipsStore = defineStore('clips', () => {
       loading.value = false
     }
     exhausted.value = true
+    filteredCount.value = items.value.length
   }
 
   function scheduleSearch(): void {
@@ -107,6 +111,7 @@ export const useClipsStore = defineStore('clips', () => {
         const clip = await db.getClip(id)
         if (!clip || !matchesFilter(clip) || items.value.some((i) => i.id === clip.id)) continue
         items.value.unshift(clip)
+        filteredCount.value += 1
         if (items.value.length > PAGE_SIZE) items.value.pop()
       }
       return
@@ -118,6 +123,7 @@ export const useClipsStore = defineStore('clips', () => {
     await db.deleteClip(id)
     items.value = items.value.filter((i) => i.id !== id)
     totalCount.value = Math.max(0, totalCount.value - 1)
+    filteredCount.value = Math.max(0, filteredCount.value - 1)
     useWorkspaceStore().pruneClip(id)
   }
 
@@ -128,6 +134,7 @@ export const useClipsStore = defineStore('clips', () => {
     const idSet = new Set(ids)
     items.value = items.value.filter((i) => !idSet.has(i.id))
     totalCount.value = Math.max(0, totalCount.value - ids.length)
+    filteredCount.value = Math.max(0, filteredCount.value - ids.length)
     const ws = useWorkspaceStore()
     for (const id of ids) ws.pruneClip(id)
     return ids.length
@@ -161,17 +168,28 @@ export const useClipsStore = defineStore('clips', () => {
     return clip ? copyText(clip.content) : false
   }
 
-  /** 合并复制当前结果集（搜索态为搜索结果，否则为最近剪藏）：纯内容，无附加信息 */
-  async function copyAll(): Promise<boolean> {
-    if (!items.value.length) return false
-    return copyText(buildPlainText(items.value))
+  /** 当前筛选下的全部 id（搜索态为搜索结果，否则为全量过滤集），供选择模式「全选」使用 */
+  async function allFilteredIds(): Promise<string[]> {
+    if (isSearching.value) return items.value.map((i) => i.id)
+    return db.listAllClipIds(listOpts())
   }
 
-  /** 详情复制：Markdown 格式，含文档头与每条来源信息 */
-  async function copyAllDetailed(): Promise<boolean> {
-    if (!items.value.length) return false
+  /**
+   * 合并复制当前结果集全部内容（纯内容，无附加信息）。
+   * 非搜索态覆盖全量过滤记录（含未加载的历史），返回实际复制条数，0 表示失败。
+   */
+  async function copyAll(): Promise<number> {
+    const clips = isSearching.value ? items.value : await db.listAllClips(listOpts())
+    if (!clips.length) return 0
+    return (await copyText(buildPlainText(clips))) ? clips.length : 0
+  }
+
+  /** 详情复制：Markdown 格式，含文档头与每条来源信息（覆盖全量过滤记录） */
+  async function copyAllDetailed(): Promise<number> {
+    const clips = isSearching.value ? items.value : await db.listAllClips(listOpts())
+    if (!clips.length) return 0
     const title = isSearching.value ? 'ClipFlow 搜索结果' : 'ClipFlow Collection'
-    return copyText(buildDocument({ title, clips: items.value }))
+    return (await copyText(buildDocument({ title, clips }))) ? clips.length : 0
   }
 
   return {
@@ -180,6 +198,7 @@ export const useClipsStore = defineStore('clips', () => {
     loading,
     exhausted,
     totalCount,
+    filteredCount,
     isSearching,
     captureMode,
     ruleFilter,
@@ -193,6 +212,7 @@ export const useClipsStore = defineStore('clips', () => {
     removeAllFiltered,
     updateContent,
     copyOne,
+    allFilteredIds,
     copyAll,
     copyAllDetailed,
   }

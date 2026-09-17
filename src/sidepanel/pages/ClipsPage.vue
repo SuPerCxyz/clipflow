@@ -42,6 +42,10 @@ watch(selectMode, (on) => {
   if (!on) selectedIds.value = new Set()
 })
 
+watch([() => store.captureMode, () => store.ruleFilter], () => {
+  selectedIds.value = new Set()
+})
+
 function toggleSelect(id: string): void {
   const next = new Set(selectedIds.value)
   next.has(id) ? next.delete(id) : next.add(id)
@@ -49,12 +53,15 @@ function toggleSelect(id: string): void {
 }
 
 const allSelected = computed(
-  () => store.items.length > 0 && store.items.every((i) => selectedIds.value.has(i.id)),
+  () => store.filteredCount > 0 && selectedIds.value.size >= store.filteredCount,
 )
 
-function toggleAll(): void {
-  if (allSelected.value) selectedIds.value = new Set()
-  else selectedIds.value = new Set(store.items.map((i) => i.id))
+async function toggleAll(): Promise<void> {
+  if (allSelected.value) {
+    selectedIds.value = new Set()
+    return
+  }
+  selectedIds.value = new Set(await store.allFilteredIds())
 }
 
 async function removeSelected(): Promise<void> {
@@ -84,17 +91,17 @@ onUnmounted(() => observer?.disconnect())
 
 async function copyAll(): Promise<void> {
   if (!store.items.length) return
-  const ok = await store.copyAll()
-  ok
-    ? message.success(`已复制 ${store.items.length} 条内容`)
+  const n = await store.copyAll()
+  n > 0
+    ? message.success(`已复制 ${n} 条内容`)
     : message.error('复制失败，请重试')
 }
 
 async function copyDetailed(): Promise<void> {
   if (!store.items.length) return
-  const ok = await store.copyAllDetailed()
-  ok
-    ? message.success(`已复制 ${store.items.length} 条（Markdown 含来源）`)
+  const n = await store.copyAllDetailed()
+  n > 0
+    ? message.success(`已复制 ${n} 条（Markdown 含来源）`)
     : message.error('复制失败，请重试')
 }
 </script>
@@ -164,7 +171,7 @@ async function copyDetailed(): Promise<void> {
       <div class="sel-info">
         <button class="check-all" :class="{ checked: allSelected }" @click="toggleAll">
           <n-icon size="13" :component="CheckboxOutline" />
-          全选（{{ store.items.length }} 条）
+          全选（{{ store.filteredCount }} 条）
         </button>
         <span class="sel-count">已选 {{ selectedIds.size }}</span>
         <span class="flex-spacer" />
