@@ -2,7 +2,7 @@
 """从源 Logo 图生成扩展全尺寸图标（16/32/48/128）。
 
 源图优先级：环境变量 CLIPFLOW_LOGO > 仓库内 assets/logo.png > ~/tmp/2.png
-依赖：python3 + Pillow
+依赖：python3 + Pillow + numpy
 """
 import os
 
