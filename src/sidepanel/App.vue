@@ -40,6 +40,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.matchMedia('(prefers-color-scheme: dark)')?.removeEventListener('change', onSchemeChange)
   window.removeEventListener('resize', schedulePopupClamp)
+  window.removeEventListener('scroll', schedulePopupClamp, true)
   popupObserver?.disconnect()
   popupObserver = null
   if (popupClampFrame != null) cancelAnimationFrame(popupClampFrame)
@@ -98,20 +99,46 @@ let popupClampFrame: number | null = null
 let popupClampTimer: ReturnType<typeof setTimeout> | null = null
 let popupObserver: MutationObserver | null = null
 
+/**
+ * 将 Naive UI 的浮层（popconfirm / select 菜单 / dropdown 等）水平收进侧边栏可视区。
+ * 侧边栏较窄且贴浏览器右侧，浮层按目标元素右对齐时容易向左/右溢出到视野外。
+ *
+ * 做法：对每个浮层容器追加 `translateX(shift)`，并在下次计算前用 data 标记移除自身位移，
+ * 避免重复累加；因此 Naive 重新定位覆盖 transform 后也能自愈。
+ */
 function clampPopupsToViewport(): void {
   popupClampFrame = null
   const gutter = 12
-  const rightEdge = window.innerWidth - gutter
+  const vw = window.innerWidth
+  const maxWidth = Math.max(120, vw - gutter * 2)
 
-  for (const popup of document.querySelectorAll<HTMLElement>(
-    '.v-binder-follower-content > .n-popover',
-  )) {
-    popup.style.marginLeft = ''
+  for (const wrapper of document.querySelectorAll<HTMLElement>('.v-binder-follower-content')) {
+    const popup = wrapper.firstElementChild as HTMLElement | null
+    if (!popup) continue
+
+    const prev = Number(wrapper.dataset.cfPopupShift ?? 0)
+    if (prev) {
+      const suffix = ` translateX(${prev}px)`
+      if (wrapper.style.transform.endsWith(suffix)) {
+        wrapper.style.transform = wrapper.style.transform.slice(0, -suffix.length)
+      }
+      delete wrapper.dataset.cfPopupShift
+    }
+
+    if (popup.offsetWidth > maxWidth) popup.style.maxWidth = `${maxWidth}px`
+
     const rect = popup.getBoundingClientRect()
+    if (rect.width < 1) continue
+
     let shift = 0
-    if (rect.right > rightEdge) shift = rightEdge - rect.right
+    if (rect.right > vw - gutter) shift -= rect.right - (vw - gutter)
     if (rect.left + shift < gutter) shift += gutter - (rect.left + shift)
-    if (shift) popup.style.marginLeft = `${shift}px`
+
+    const rounded = Math.round(shift)
+    if (rounded) {
+      wrapper.style.transform += ` translateX(${rounded}px)`
+      wrapper.dataset.cfPopupShift = String(rounded)
+    }
   }
 }
 
@@ -123,7 +150,7 @@ function schedulePopupClamp(): void {
   popupClampTimer = setTimeout(() => {
     popupClampTimer = null
     clampPopupsToViewport()
-  }, 220)
+  }, 360)
 }
 
 onMounted(() => {
@@ -132,6 +159,7 @@ onMounted(() => {
   popupObserver = new MutationObserver(schedulePopupClamp)
   popupObserver.observe(document.body, { childList: true })
   window.addEventListener('resize', schedulePopupClamp)
+  window.addEventListener('scroll', schedulePopupClamp, true)
 })
 
 function onSearchInput(): void {
